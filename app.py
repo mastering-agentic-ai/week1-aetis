@@ -1,9 +1,11 @@
+import os
 from pathlib import Path
 import math
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+from openai import OpenAI
 
 # ---------------------------------------------------------
 # Page Configuration
@@ -465,28 +467,47 @@ st.markdown(
             fill: {text_primary} !important;
         }}
 
-        /* Download Buttons & Secondary Action Buttons */
+        /* Download Buttons & Secondary Action Buttons across Entire App */
         [data-testid="stDownloadButton"] button,
         .stDownloadButton button,
-        .main div[data-testid="stButton"] button:not([kind="primary"]) {{
+        div[data-testid="stButton"] button:not([kind="primary"]),
+        button[data-testid="stBaseButton-secondary"],
+        .stButton button:not([kind="primary"]) {{
             background-color: {"#ffffff" if not is_dark else "#111827"} !important;
             color: {text_primary} !important;
             border: 1px solid {"#cbd5e1" if not is_dark else "#374151"} !important;
             border-radius: 8px !important;
             font-weight: 600 !important;
             box-shadow: {"0 1px 2px rgba(0, 0, 0, 0.05)" if not is_dark else "none"} !important;
+            transition: all 0.2s ease !important;
         }}
         [data-testid="stDownloadButton"] button p,
+        [data-testid="stDownloadButton"] button span,
         .stDownloadButton button p,
-        .main div[data-testid="stButton"] button:not([kind="primary"]) p {{
+        div[data-testid="stButton"] button:not([kind="primary"]) p,
+        div[data-testid="stButton"] button:not([kind="primary"]) span,
+        button[data-testid="stBaseButton-secondary"] p,
+        button[data-testid="stBaseButton-secondary"] span,
+        .stButton button:not([kind="primary"]) p,
+        .stButton button:not([kind="primary"]) span {{
             color: {text_primary} !important;
             font-weight: 600 !important;
         }}
         [data-testid="stDownloadButton"] button:hover,
         .stDownloadButton button:hover,
-        .main div[data-testid="stButton"] button:not([kind="primary"]):hover {{
+        div[data-testid="stButton"] button:not([kind="primary"]):hover,
+        button[data-testid="stBaseButton-secondary"]:hover,
+        .stButton button:not([kind="primary"]):hover {{
             background-color: {"#f1f5f9" if not is_dark else "#1f2937"} !important;
             border-color: {accent_blue} !important;
+            color: {accent_blue} !important;
+        }}
+        [data-testid="stDownloadButton"] button:hover p,
+        [data-testid="stDownloadButton"] button:hover span,
+        div[data-testid="stButton"] button:not([kind="primary"]):hover p,
+        div[data-testid="stButton"] button:not([kind="primary"]):hover span,
+        button[data-testid="stBaseButton-secondary"]:hover p,
+        button[data-testid="stBaseButton-secondary"]:hover span {{
             color: {accent_blue} !important;
         }}
 
@@ -521,18 +542,182 @@ st.markdown(
             fill: {text_primary} !important;
         }}
 
-        /* Expanders */
+        /* Expanders (Full Light & Dark Theme Support) */
+        [data-testid="stExpander"],
+        div[data-testid="stExpander"],
+        [data-testid="stExpander"] details,
         details[data-testid="stExpander"] {{
             background-color: {card_bg} !important;
             border: 1px solid {card_border} !important;
             border-radius: 8px !important;
+            overflow: hidden !important;
         }}
+        [data-testid="stExpander"] summary,
+        [data-testid="stExpander"] details > summary,
         details[data-testid="stExpander"] summary {{
+            background-color: {"#f8fafc" if not is_dark else "#161f30"} !important;
+            color: {text_primary} !important;
+            border-bottom: 1px solid {card_border} !important;
+            border-radius: 8px 8px 0 0 !important;
+            font-weight: 600 !important;
+            transition: background-color 0.2s ease, color 0.2s ease !important;
+        }}
+        [data-testid="stExpander"] summary:hover,
+        [data-testid="stExpander"] details > summary:hover,
+        details[data-testid="stExpander"] summary:hover {{
+            background-color: {"#f1f5f9" if not is_dark else "#1e293b"} !important;
+            color: {accent_blue} !important;
+        }}
+        [data-testid="stExpander"] summary p,
+        [data-testid="stExpander"] summary span,
+        [data-testid="stExpander"] summary div {{
             color: {text_primary} !important;
             font-weight: 600 !important;
+            font-size: 0.94rem !important;
         }}
-        details[data-testid="stExpander"] svg {{
+        [data-testid="stExpander"] summary:hover p,
+        [data-testid="stExpander"] summary:hover span,
+        [data-testid="stExpander"] summary:hover div {{
+            color: {accent_blue} !important;
+        }}
+        [data-testid="stExpander"] summary svg,
+        [data-testid="stExpander"] summary path,
+        [data-testid="stExpanderToggleIcon"] {{
             fill: {text_primary} !important;
+            color: {text_primary} !important;
+        }}
+        [data-testid="stExpander"] summary:hover svg,
+        [data-testid="stExpander"] summary:hover path,
+        [data-testid="stExpander"] summary:hover [data-testid="stExpanderToggleIcon"] {{
+            fill: {accent_blue} !important;
+            color: {accent_blue} !important;
+        }}
+        [data-testid="stExpanderDetails"] {{
+            background-color: {card_bg} !important;
+            color: {text_primary} !important;
+        }}
+
+        /* Pulse Glow Animation for Dispatch Indicator */
+        @keyframes copilotPulseGlow {{
+            0% {{ opacity: 0.4; transform: scale(0.92); }}
+            50% {{ opacity: 1; transform: scale(1.15); }}
+            100% {{ opacity: 0.4; transform: scale(0.92); }}
+        }}
+        .copilot-pulse {{
+            display: inline-block !important;
+            width: 10px !important;
+            height: 10px !important;
+            border-radius: 50% !important;
+            background: {accent_blue} !important;
+            box-shadow: 0 0 8px {accent_blue} !important;
+            animation: copilotPulseGlow 1.3s infinite ease-in-out !important;
+        }}
+
+        /* Chat Messages & Chat Input (Bottom Drawer Copilot) */
+        [data-testid="stChatMessage"] {{
+            background-color: {"#ffffff" if not is_dark else "#111827"} !important;
+            border: 1px solid {card_border} !important;
+            border-radius: 8px !important;
+            margin-bottom: 0.75rem !important;
+            padding: 0.85rem 1rem !important;
+        }}
+
+        /* Clamped Heading Hierarchy in Chat Messages (Matches Top Title ~1.12rem) */
+        [data-testid="stChatMessage"] h1 {{
+            font-size: 1.15rem !important;
+            font-weight: 750 !important;
+            letter-spacing: -0.015em !important;
+            margin-top: 0.35rem !important;
+            margin-bottom: 0.5rem !important;
+            color: {text_primary} !important;
+            line-height: 1.3 !important;
+        }}
+        [data-testid="stChatMessage"] h2 {{
+            font-size: 1.08rem !important;
+            font-weight: 700 !important;
+            letter-spacing: -0.01em !important;
+            margin-top: 0.35rem !important;
+            margin-bottom: 0.45rem !important;
+            color: {text_primary} !important;
+            line-height: 1.3 !important;
+        }}
+        [data-testid="stChatMessage"] h3 {{
+            font-size: 1.0rem !important;
+            font-weight: 650 !important;
+            margin-top: 0.3rem !important;
+            margin-bottom: 0.35rem !important;
+            color: {text_primary} !important;
+            line-height: 1.3 !important;
+        }}
+        [data-testid="stChatMessage"] p,
+        [data-testid="stChatMessage"] span,
+        [data-testid="stChatMessage"] li {{
+            color: {text_primary} !important;
+            font-size: 0.88rem !important;
+            line-height: 1.55 !important;
+        }}
+
+        /* Clean Markdown Tables in Chat Messages */
+        [data-testid="stChatMessage"] table {{
+            width: 100% !important;
+            border-collapse: collapse !important;
+            margin: 0.75rem 0 !important;
+            font-size: 0.83rem !important;
+            border: 1px solid {card_border} !important;
+            border-radius: 6px !important;
+            overflow: hidden !important;
+        }}
+        [data-testid="stChatMessage"] th {{
+            background-color: {"#f1f5f9" if not is_dark else "#1e293b"} !important;
+            color: {text_primary} !important;
+            font-weight: 700 !important;
+            padding: 8px 12px !important;
+            border: 1px solid {card_border} !important;
+            text-align: left !important;
+        }}
+        [data-testid="stChatMessage"] td {{
+            padding: 8px 12px !important;
+            border: 1px solid {card_border} !important;
+            color: {text_primary} !important;
+            vertical-align: top !important;
+            line-height: 1.45 !important;
+        }}
+        [data-testid="stChatMessage"] tr:nth-child(even) td {{
+            background-color: {"#f8fafc" if not is_dark else "rgba(255, 255, 255, 0.02)"} !important;
+        }}
+        [data-testid="stChatMessage"] pre {{
+            background-color: {"#f8fafc" if not is_dark else "#0b0f19"} !important;
+            border: 1px solid {card_border} !important;
+            border-radius: 6px !important;
+            padding: 10px 12px !important;
+            margin: 0.5rem 0 !important;
+            overflow-x: auto !important;
+        }}
+        [data-testid="stChatMessage"] code {{
+            font-size: 0.82rem !important;
+            color: {accent_blue} !important;
+        }}
+
+        [data-testid="stChatInput"],
+        [data-testid="stChatInput"] > div,
+        [data-testid="stChatInput"] textarea {{
+            background-color: {"#ffffff" if not is_dark else "#111827"} !important;
+            border-color: {"#cbd5e1" if not is_dark else "#374151"} !important;
+            color: {text_primary} !important;
+        }}
+        [data-testid="stChatInput"] textarea::placeholder {{
+            color: {"#64748b" if not is_dark else "#9ca3af"} !important;
+        }}
+
+        [id="top-3-offending-ip-analysis"],
+        [id="soc-incident-triage-briefing"],
+        [data-testid="stHeadingWithActionElements"] h3 {{
+            padding: 0px !important;
+        }}
+        [data-testid="stCaptionContainer"] code {{
+            background-color: {"rgb(230, 230, 230)" if not is_dark else "rgb(14, 20, 32)"};
+            color: {"darkgreen" if not is_dark else "rgb(92, 228, 136)"};
+            font-weight: bold;
         }}
 
         /* Main Content Text Prominence */
@@ -691,7 +876,7 @@ st.html(
             Autonomous Enterprise Telemetry &amp; Incident System
         </span>
         <span style="font-size: 0.72rem; font-weight: 700; background: rgba(56, 189, 248, 0.16); color: {accent_blue}; padding: 2px 7px; border-radius: 4px; letter-spacing: 0.04em; margin-left: 4px;">
-            AETIS Core
+            Samiksha Agent
         </span>
     </div>
     """
@@ -1715,6 +1900,246 @@ with tab_explorer:
         file_name="filtered_security_audit_logs.csv",
         mime="text/csv",
     )
+
+# ---------------------------------------------------------
+# Bottom Drawer: AI Incident Copilot (OpenRouter / Native st.chat_message)
+# ---------------------------------------------------------
+st.markdown("<div style='height: 24px;'></div>", unsafe_allow_html=True)
+
+# Initialize Session State Variables
+if "soc_chat_history" not in st.session_state:
+    st.session_state["soc_chat_history"] = [
+        {
+            "role": "assistant",
+            "content": "👋 **Welcome to Samiksha AI Agent!** I analyze active telemetry, explain security incident anomalies, pinpoint offending IPs, and generate mitigation runbooks. You can use the above predefined quieries. Enter your AI Agent credentials above to begin.",
+        }
+    ]
+
+if "copilot_base_url" not in st.session_state:
+    st.session_state["copilot_base_url"] = "https://openrouter.ai/api/v1"
+if "copilot_model" not in st.session_state:
+    st.session_state["copilot_model"] = "openrouter/free"
+if "copilot_api_key" not in st.session_state:
+    st.session_state["copilot_api_key"] = os.getenv("OPENROUTER_API_KEY", "")
+
+with st.expander("🤖 Samiksha AI Agent - Incident & Telemetry Assistant", expanded=st.session_state.get("copilot_drawer_open", False)):
+    st.markdown(
+        f"""
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem; flex-wrap: wrap; gap: 8px;">
+            <div>
+                <span style="font-size: 0.95rem; font-weight: 700; color: {text_primary};">Conversational Threat Intelligence</span>
+            </div>
+            <div style="font-size: 0.78rem; color: {accent_blue}; font-weight: 600;">
+                Live Telemetry Scope: {len(filtered_df):,} records
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # 1. User Configuration Form: Base URL, API Key, Model
+    with st.container():
+        cfg_c1, cfg_c2, cfg_c3 = st.columns([2.2, 2.5, 2.2])
+        with cfg_c1:
+            copilot_base_url = st.text_input(
+                "API Base URL",
+                value=st.session_state["copilot_base_url"],
+                placeholder="https://openrouter.ai/api/v1",
+                help="OpenRouter or any OpenAI-compatible base URL",
+                key="copilot_base_url_input",
+            )
+            st.session_state["copilot_base_url"] = copilot_base_url
+        with cfg_c2:
+            copilot_api_key = st.text_input(
+                "API Key (OpenRouter)",
+                value=st.session_state["copilot_api_key"],
+                type="password",
+                placeholder="sk-or-v1-...",
+                help="Your OpenRouter API Key (never logged or shared)",
+                key="copilot_api_key_input",
+            )
+            st.session_state["copilot_api_key"] = copilot_api_key
+        with cfg_c3:
+            copilot_model = st.text_input(
+                "Model Identifier",
+                value=st.session_state["copilot_model"],
+                placeholder="openrouter/free",
+                help="Model name (e.g. openrouter/free, meta-llama/llama-3.3-70b-instruct:free, google/gemini-2.0-flash-exp:free)",
+                key="copilot_model_input",
+            )
+            st.session_state["copilot_model"] = copilot_model
+
+    # Status / Readiness indicator
+    has_api_key = bool(copilot_api_key and copilot_api_key.strip())
+    if has_api_key:
+        st.caption(f"🟢 **Ready** • Base URL: `{copilot_base_url}` • Model: `{copilot_model}` • Grounded on active filters")
+    else:
+        st.info("💡 **Setup Required**: Please provide your **API Key** above to submit inquiries to OpenRouter.")
+
+    # 3. Quick Action Prompts
+    st.markdown("<div style='margin-top: 0.5rem;'></div>", unsafe_allow_html=True)
+    q_col1, q_col2, q_col3, q_col4, q_col5 = st.columns([1, 1, 1, 1, 0.7])
+    quick_query = None
+
+    with q_col1:
+        if st.button("⚡ Triage Briefing", key="copilot_btn_triage", use_container_width=True):
+            quick_query = "Provide a comprehensive SOC incident triage briefing analyzing the active security anomalies and latency breaches."
+    with q_col2:
+        if st.button("🎯 Top 3 Offenders", key="copilot_btn_ips", use_container_width=True):
+            quick_query = "Analyze the top 3 offending IP addresses, their attack signatures, and the targeted microservices. Present a clean, compact markdown table summarizing each IP with brief inline recommendations, followed by separate, dedicated remediation code blocks below the table."
+    with q_col3:
+        if st.button("⏱️ Latency SLA Impact", key="copilot_btn_latency", use_container_width=True):
+            quick_query = "Investigate the requests breaching the 2,000ms SLA threshold and determine root causes."
+    with q_col4:
+        if st.button("🛡️ Containment Rules", key="copilot_btn_waf", use_container_width=True):
+            quick_query = "Draft immediate firewall (AWS WAF / iptables) rules and rate-limiting parameters to mitigate these attacks."
+    with q_col5:
+        if st.button("🧹 Clear Chat", key="copilot_btn_clear", use_container_width=True):
+            st.session_state["soc_chat_history"] = [
+                {
+                    "role": "assistant",
+                    "content": "👋 Chat history cleared. What would you like to investigate next in the telemetry?",
+                }
+            ]
+            st.rerun()
+
+    # st.markdown("---")
+
+    # 2. Chat Messages Display Container
+    chat_display = st.container()
+    with chat_display:
+        for message in st.session_state["soc_chat_history"]:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
+    # 4. Chat Input
+    user_prompt = st.chat_input(
+        "Ask Samiksha AI Agent about active incidents, threat vectors, IPs, or endpoints...",
+        key="copilot_chat_box",
+    )
+
+    query_to_send = quick_query or user_prompt
+
+    if query_to_send:
+        st.session_state["copilot_drawer_open"] = True
+        if not has_api_key:
+            st.error("⚠️ Please enter your OpenRouter API Key in the settings fields above.")
+        else:
+            # Append and render user query
+            st.session_state["soc_chat_history"].append({"role": "user", "content": query_to_send})
+            with chat_display:
+                with st.chat_message("user"):
+                    st.markdown(query_to_send)
+
+            # Assemble live telemetry context from currently filtered dataset
+            total_filtered = len(filtered_df)
+            anomalies_only = filtered_df[filtered_df["label"] != "BENIGN"]
+            total_anomalies = len(anomalies_only)
+            http_faults = int((filtered_df["status_code"] >= 400).sum())
+            critical_lat = int((filtered_df["latency_ms"] > 2000).sum())
+
+            top_threats = anomalies_only["label"].value_counts().head(5).to_dict()
+            top_ips_data = anomalies_only["client_ip"].value_counts().head(3).to_dict()
+            top_endpoints = filtered_df[filtered_df["status_code"] >= 400]["endpoint"].value_counts().head(3).to_dict()
+
+            # Forensic sample of anomalous payloads
+            sample_payloads = []
+            if not anomalies_only.empty:
+                for _, r in anomalies_only.head(3).iterrows():
+                    sample_payloads.append(
+                        f"Trace {r['trace_id']}: {r['service_name']} {r['http_method']} {r['endpoint']} -> {r['label']} (IP: {r['client_ip']}, Payload: {str(r['payload_snippet'])[:100]})"
+                    )
+
+            avg_lat = filtered_df['latency_ms'].mean() if not filtered_df.empty else 0
+            p95_lat = filtered_df['latency_ms'].quantile(0.95) if not filtered_df.empty else 0
+            max_lat = filtered_df['latency_ms'].max() if not filtered_df.empty else 0
+
+            context_block = f"""
+Current Live Telemetry State (Scoped Filters):
+- Scope: {total_filtered:,} requests out of {total_raw_rows:,} global logs
+- Active Microservices: {', '.join(selected_services)}
+- Active Regions: {', '.join(selected_regions)}
+- Latency Filter Range: {selected_latency[0]}ms - {selected_latency[1]}ms
+- Latency Stats: Avg = {avg_lat:.1f}ms | p95 = {p95_lat:.1f}ms | Max = {max_lat:.1f}ms
+- SLA Violations (>2,000ms): {critical_lat:,}
+- Total Anomalous Attacks: {total_anomalies:,}
+- Attack Breakdown: {top_threats}
+- HTTP Faults (4xx/5xx): {http_faults:,}
+- Top 3 Offending IPs: {top_ips_data}
+- Top Failure Endpoints: {top_endpoints}
+- Forensic Samples:
+  {chr(10).join(sample_payloads)}
+"""
+
+            system_instruction = (
+                "You are AETIS SOC Copilot, an expert AI Security Incident Commander and Microservice Telemetry Analyst. "
+                "You are embedded directly in the production SOC monitoring console. "
+                "Answer questions using the verified telemetry context below.\n\n"
+                "CRITICAL FORMATTING RULES FOR CHAT OUTPUT:\n"
+                "1. HEADINGS: Keep all section headings compact (use '###' or '##', never giant 'h1' banners). Keep headings proportional to UI headers.\n"
+                "2. TABLES: In markdown tables, keep every table cell strictly single-line and concise. NEVER put multiline code blocks (` ``` `), shell scripts, or raw unescaped newlines inside table cells, as this breaks Markdown table parsing. In table cells, use only short summaries and brief inline code (e.g. `iptables -A ...`).\n"
+                "3. REMEDIATION CODE BLOCKS: Place full multi-line CLI commands, WAF rules, or Nginx configurations in separate, dedicated code blocks (e.g. ```bash ... ```) directly AFTER the table, clearly labeled for each offending IP.\n"
+                "4. Structure your response with analytical rigor: cite offending IPs, targeted endpoints, MITRE ATT&CK techniques, and clear mitigation runbooks.\n\n"
+                f"{context_block}"
+            )
+
+            with chat_display:
+                with st.chat_message("assistant"):
+                    # Visual in-flight dispatch indicator
+                    indicator_placeholder = st.empty()
+                    indicator_placeholder.markdown(
+                        f"""
+                        <div style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: {"rgba(2, 132, 199, 0.08)" if not is_dark else "rgba(56, 189, 248, 0.08)"}; border: 1px solid {accent_blue}; border-radius: 8px; margin-bottom: 8px;">
+                            <span class="copilot-pulse"></span>
+                            <span style="font-size: 0.85rem; font-weight: 600; color: {text_primary};">
+                                📡 Telemetry dispatched to OpenRouter (<code>{copilot_model}</code>)... Analyzing incidents &amp; awaiting stream...
+                            </span>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                    try:
+                        client = OpenAI(
+                            base_url=copilot_base_url.strip(),
+                            api_key=copilot_api_key.strip(),
+                            default_headers={
+                                "HTTP-Referer": "http://localhost:8501",
+                                "X-Title": "AETIS SOC Dashboard",
+                            },
+                        )
+
+                        history_window = [
+                            {"role": m["role"], "content": m["content"]}
+                            for m in st.session_state["soc_chat_history"][-6:]
+                        ]
+
+                        def stream_copilot_response():
+                            first_chunk = True
+                            stream = client.chat.completions.create(
+                                model=copilot_model.strip(),
+                                messages=[
+                                    {"role": "system", "content": system_instruction},
+                                    *history_window,
+                                ],
+                                temperature=0.2,
+                                stream=True,
+                            )
+                            for chunk in stream:
+                                if chunk.choices and chunk.choices[0].delta.content:
+                                    if first_chunk:
+                                        indicator_placeholder.empty()
+                                        first_chunk = False
+                                    yield chunk.choices[0].delta.content
+
+                        response_text = st.write_stream(stream_copilot_response())
+                        indicator_placeholder.empty()
+                        st.session_state["soc_chat_history"].append({"role": "assistant", "content": response_text})
+                    except Exception as err:
+                        indicator_placeholder.empty()
+                        error_feedback = f"❌ **OpenRouter Error**: `{str(err)}`\n\n*Check your API key, base URL, or model identifier.*"
+                        st.error(error_feedback)
+                        st.session_state["soc_chat_history"].append({"role": "assistant", "content": error_feedback})
 
 # ---------------------------------------------------------
 # Footer
